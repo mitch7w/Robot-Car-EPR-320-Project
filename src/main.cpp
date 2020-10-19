@@ -2,6 +2,7 @@
 #include <U8g2lib.h>
 #include <SPI.h>
 #include <Wire.h>
+#include <arduinoFFT.h>
 
 U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0);
 String currentState = "IDLE";
@@ -19,11 +20,22 @@ int SYSByte[] = {-1, -1};
 int SUBByte[] = {-1, -1};
 int ISTByte[] = {-1, -1, -1, -1};
 String lineColour = "GREEN";
+// All vars for sound detection + FFT
+bool soundDetected = false ; // Whether or not the system has detected emergency tone
+#define NUMSAMPLES 512
+# define SAMPLING_FREQ 6500 // Nyquist double max freq (~3075)
+# define EMERGENCY_FREQ 1250 // SOS emergency tone
+arduinoFFT FFT = arduinoFFT() ;
+unsigned int samplingPeriodMS ;
+unsigned long microSeconds ;
+double fftReal[NUMSAMPLES] ;
+double fftImaginary[NUMSAMPLES] ;
 
 void setup()
 {
   Serial.begin(19200);
   u8g2.begin();
+  samplingPeriodMS = round(1000000 * (1.0 / SAMPLING_FREQ));
   delay(1000);
 }
 
@@ -99,6 +111,25 @@ void clearInput()
   DAT1Byte = -1;
   DAT0Byte = -1;
   DECByte = -1;
+}
+
+void soundDetection() {
+  // Sample
+  for(int j = 0 ; j < NUMSAMPLES ; j++) {
+    microSeconds = micros() ;
+    fftReal[j] = analogRead(36) ;
+    fftReal[j] = 0 ;
+    while(micros() < (microSeconds + samplingPeriodMS)) {}
+  }
+  // FFT
+  FFT.Windowing(fftReal, NUMSAMPLES, FFT_WIN_TYP_HAMMING, FFT_FORWARD);
+  FFT.Compute(fftReal, fftImaginary, NUMSAMPLES, FFT_FORWARD);
+  FFT.ComplexToMagnitude(fftReal, fftImaginary, NUMSAMPLES) ;
+  double currentPeakFrequency = FFT.MajorPeak(fftReal, NUMSAMPLES, SAMPLING_FREQ) -10 ; // -10 because of hardware error
+  // Now check if detected frequency is emergency frequency
+  if (currentPeakFrequency < (EMERGENCY_FREQ + 10) && currentPeakFrequency > (EMERGENCY_FREQ - 10)) {
+    soundDetected = true ;
+  }
 }
 
 void idleState()
@@ -280,10 +311,11 @@ void raceState()
     Serial.write(tempLeftMotor);  // DAT0 = left motor speed
     Serial.write(0);              // DEC = 0
   }
-
+  soundDetection() ;
   if (soundDetected)
   {
     currentState = "SOS";
+    soundDetected = false ;
   }
 
   if (currentState == "SOS")
