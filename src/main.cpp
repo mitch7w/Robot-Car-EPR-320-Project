@@ -16,9 +16,7 @@ int batteryLevel = -1;
 int DAT1Byte = -1;
 int DAT0Byte = -1;
 int DECByte = -1;
-int SYSByte[] = {-1, -1};
-int SUBByte[] = {-1, -1};
-int ISTByte[] = {-1, -1, -1, -1};
+int ControlByte = -1;
 String lineColour = "GREEN";
 // All vars for sound detection + FFT
 #define NUMSAMPLES 512
@@ -33,6 +31,7 @@ double fftImaginary[NUMSAMPLES];
 void setup()
 {
   Serial.begin(19200);
+  delay(1000);
   u8g2.begin();
   samplingPeriodMS = round(1000000 * (1.0 / SAMPLING_FREQ));
   // Setup ports for LED outputs
@@ -99,15 +98,7 @@ void receiveInput()
 {
   if (Serial.available() >= 4)
   { // There is data to read
-    int tempFirstByte = Serial.read();
-    SYSByte[0] = bitRead(tempFirstByte, 7);
-    SYSByte[1] = bitRead(tempFirstByte, 6);
-    SUBByte[0] = bitRead(tempFirstByte, 5);
-    SUBByte[1] = bitRead(tempFirstByte, 4);
-    ISTByte[0] = bitRead(tempFirstByte, 3);
-    ISTByte[1] = bitRead(tempFirstByte, 2);
-    ISTByte[2] = bitRead(tempFirstByte, 1);
-    ISTByte[3] = bitRead(tempFirstByte, 0);
+    ControlByte = Serial.read();
     DAT1Byte = Serial.read();
     DAT0Byte = Serial.read();
     DECByte = Serial.read();
@@ -118,14 +109,7 @@ void receiveInput()
 void clearInput()
 {
   // Clears variables to prevent accidental confusion
-  SYSByte[0] = -1;
-  SYSByte[1] = -1;
-  SUBByte[0] = -1;
-  SUBByte[1] = -1;
-  ISTByte[0] = -1;
-  ISTByte[1] = -1;
-  ISTByte[2] = -1;
-  ISTByte[3] = -1;
+  ControlByte = -1;
   DAT1Byte = -1;
   DAT0Byte = -1;
   DECByte = -1;
@@ -158,7 +142,7 @@ void soundDetection()
   currentPeakFrequency = tempPeak ;
   
   // Now check if detected frequency is emergency frequency
-  if (currentPeakFrequency < (EMERGENCY_FREQ + 10) && currentPeakFrequency > (EMERGENCY_FREQ - 10))
+  if (currentPeakFrequency < (EMERGENCY_FREQ + 5) && currentPeakFrequency > (EMERGENCY_FREQ - 5))
   {
     currentState = "SOS";
   }
@@ -198,52 +182,47 @@ void idleState()
         tempColour = "GREEN";
       }
       lineColour = tempColour;
-      delay(1000); // to prevent multiple colour changes
+      delay(500); // to prevent multiple colour changes
     }
   }
   // Update hub with new info. SYS, SUB, IST, DAT1, DAT0, DEC
-  Serial.print(16, BIN); // 0b00010000
+  Serial.write(16); // 0b00010000
   if (currentState == "CAL")
   {                       // button has been pressed
-    Serial.print(1, BIN); // DAT1 = 1
+    Serial.write(1); // DAT1 = 1
   }
   else
   {
-    Serial.print(0, BIN); // DAT1 = 0
+    Serial.write(0); // DAT1 = 0
   }
-  Serial.print(lineColour[0], BIN); // DAT0 = line colour
-  Serial.print(0, BIN);             // DEC = 0
+  Serial.write(lineColour[0]); // DAT0 = line colour
+  Serial.write(0);             // DEC = 0
 
   writeToScreenIdle();
 }
 
 void calState()
 {
-  if (touchRead(4) < 20)
-  {
-    delay(200) ;
-    if (touchRead(4) < 20)
-    {
-      currentState = "RACE";
-      delay(1000); // to prevent moving straight to next state
-    }
-  }
   receiveInput(); // receive info from other systems
   //receive battery level from motor
-  if (SYSByte[0] == 0 && SYSByte[1] == 1 && SUBByte[0] == 1 && SUBByte[1] == 0 && ISTByte[0] == 0 && ISTByte[1] == 0 && ISTByte[2] == 0 && ISTByte[3] == 1)
+  if (ControlByte == 97)
   {
     batteryLevel = DAT1Byte; // DAT1 = battery level in percentage
   }
   //receive operating point from motor
-  if (SYSByte[0] == 0 && SYSByte[1] == 1 && SUBByte[0] == 1 && SUBByte[1] == 0 && ISTByte[0] == 0 && ISTByte[1] == 0 && ISTByte[2] == 0 && ISTByte[3] == 0)
+  if (ControlByte == 96)
   {
     // DAT0Byte = left motor operating point
     // DAT1Byte = right motor operating point
     operatingPoint = DAT1Byte;
   }
 
+  if(ControlByte == 112) {
+    // start calibration
+  }
+
   // receive offset from sensor
-  if (SYSByte[0] == 0 && SYSByte[1] == 1 && SUBByte[0] == 1 && SUBByte[1] == 1 && ISTByte[0] == 0 && ISTByte[1] == 0 && ISTByte[2] == 0 && ISTByte[3] == 1)
+  if (ControlByte == 113)
   {
     // DAT1 = line offset
     // DAT0 = line colour
@@ -265,23 +244,34 @@ void calState()
   }
 
   // Display info on OLED screen if received it
-  if (offsetValue != -1 && batteryLevel != -1 && centreSensorColour != "Unknown")
-  { // have received both
-    writeToScreenCal();
+  // if (offsetValue != -1 && batteryLevel != -1 && centreSensorColour != "Unknown")
+  // { // have received both
+  //writeToScreenCal();
+  // }
+  writeToScreenCal();
+
+  if (touchRead(4) < 20)
+  {
+    delay(200);
+    if (touchRead(4) < 20)
+    {
+      currentState = "RACE";
+      delay(1000); // to prevent moving straight to next state
+    }
   }
 
   // Update hub with new info. SYS, SUB, IST, DAT1, DAT0, DEC
-  Serial.print(80, BIN); // 0b01010000
+  Serial.write(80); // 0b01010000
   if (currentState == "RACE")
   {                       // button has been pressed
-    Serial.print(1, BIN); // DAT1 = 1
+    Serial.write(1); // DAT1 = 1
   }
   else
   {
-    Serial.print(0, BIN); // DAT1 = 0
+    Serial.write(0); // DAT1 = 0
   }
-  Serial.print(lineColour[0], BIN); // DAT0 = line colour
-  Serial.print(0, BIN);             // DEC = 0
+  Serial.write(lineColour[0]); // DAT0 = line colour
+  Serial.write(0);             // DEC = 0
   clearInput();
 }
 
@@ -289,19 +279,19 @@ void raceState()
 {
   receiveInput();
   //receive battery level from motor
-  if (SYSByte[0] == 1 && SYSByte[1] == 0 && SUBByte[0] == 1 && SUBByte[1] == 0 && ISTByte[0] == 0 && ISTByte[1] == 0 && ISTByte[2] == 0 && ISTByte[3] == 1)
+  if (ControlByte == 161)
   {
     batteryLevel = DAT1Byte; // DAT1 = battery level in percentage
   }
   // receive measured speed of motors
-  if (SYSByte[0] == 1 && SYSByte[1] == 0 && SUBByte[0] == 1 && SUBByte[1] == 0 && ISTByte[0] == 0 && ISTByte[1] == 0 && ISTByte[2] == 1 && ISTByte[3] == 1)
+  if (ControlByte == 163)
   {
     // DAT0Byte = left motor speed
     // DAT1Byte = right motor speed
     speedValue = DAT1Byte;
   }
   // receive measured line offset from sensor
-  if (SYSByte[0] == 1 && SYSByte[1] == 0 && SUBByte[0] == 1 && SUBByte[1] == 1 && ISTByte[0] == 0 && ISTByte[1] == 0 && ISTByte[2] == 0 && ISTByte[3] == 1)
+  if (ControlByte == 177)
   {
     // DAT0Byte = line colour
     // DAT1Byte = line offset
@@ -322,16 +312,12 @@ void raceState()
     deviationLeftOrRight = DECByte;
   }
   // Receive end of line command from HUB
-  if (SYSByte[0] == 0 && SYSByte[1] == 0 && SUBByte[0] == 0 && SUBByte[1] == 0 && ISTByte[0] == 0 && ISTByte[1] == 0 && ISTByte[2] == 0 && ISTByte[3] == 1)
+  if (ControlByte == 1)
   {
     currentState == "IDLE";
   }
-
-  // Display info on OLED screen if received it
-  if (offsetValue != -1 && batteryLevel != -1 && speedValue != 1 && centreSensorColour != "Unknown")
-  { // Have received all inputs needed
-    writeToScreenAll();
-  }
+  // Display info on OLED screen
+  writeToScreenAll();
 
   // Update hub with speed control (Steering control algorithm)
   int tempRightMotor = -1;
@@ -377,29 +363,29 @@ void raceState()
     }
 
     // Send motor speed commands to hub
-    if (tempLeftMotor != -1 && tempRightMotor != -1)
-    {
-      Serial.print(146, BIN);            // 0b10010010
-      Serial.print(tempRightMotor, BIN); //DATA1 = right motor speed
-      Serial.print(tempLeftMotor, BIN);  // DAT0 = left motor speed
-      Serial.print(0, BIN);              // DEC = 0
-    }
+    // Serial.write(146);            // 0b10010010
+    // Serial.write(tempRightMotor); //DATA1 = right motor speed
+    // Serial.write(tempLeftMotor);  // DAT0 = left motor speed
+    // Serial.write(0);              // DEC = 0
+    // if (tempLeftMotor != -1 && tempRightMotor != -1)
+    // {      
+    // }
   }
 
   soundDetection();
   // Update hub with sound detection
-  Serial.print(145, BIN); // 0b10010001
+  Serial.write(145); // 0b10010001
   if (currentState == "SOS")
   {                       // sound has been detected
-    Serial.print(1, BIN); //DATA1 = sound detected
+    Serial.write(1); //DATA1 = sound detected
   }
   else
   {
-    Serial.print(0, BIN);
+    Serial.write(0);
   }
 
-  Serial.print(0, BIN); // DAT0 = 0 Don't care
-  Serial.print(0, BIN); // DEC = 0 Don't care
+  Serial.write(0); // DAT0 = 0 Don't care
+  Serial.write(0); // DEC = 0 Don't care
 
   clearInput();
 }
@@ -409,7 +395,7 @@ void sosState()
   writeToScreenAll(); // update OLED
   receiveInput();
   //receive speed from motor
-  if (SYSByte[0] == 1 && SYSByte[1] == 1 && SUBByte[0] == 1 && SUBByte[1] == 0 && ISTByte[0] == 0 && ISTByte[1] == 1 && ISTByte[2] == 0 && ISTByte[3] == 0)
+  if (ControlByte == 228)
   {
     speedValue = DAT1Byte; // DAT1 = right motor speed
   }
@@ -418,21 +404,22 @@ void sosState()
     delay(200) ;
     if (touchRead(4) < 20) {
       currentState = "RACE";
+      writeToScreenAll() ;
     }
       
   }
   // Update hub with button pressed status
-  Serial.print(208, BIN);     // 0b11010000
+  Serial.write(208);     // 0b11010000
   if (currentState == "RACE") // button has been pressed
   {
-    Serial.print(1, BIN); // DAT1 = 1
+    Serial.write(1); // DAT1 = 1
   }
   else
   {
-    Serial.print(0, BIN); // DAT1 = 0
+    Serial.write(0); // DAT1 = 0
   }
-  Serial.print(lineColour[0], BIN); // DAT0 = line colour
-  Serial.print(0, BIN);             // DEC = 0
+  Serial.write(lineColour[0]); // DAT0 = line colour
+  Serial.write(0);             // DEC = 0
   clearInput();
 }
 
