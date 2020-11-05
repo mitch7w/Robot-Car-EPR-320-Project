@@ -22,6 +22,8 @@ bool firstSos = true ;
 bool sosSwitchPress = false ;
 bool firstSound = true ;
 bool soundDetected = false ;
+int previousRightMotor = 30 ;
+int previousLeftMotor = 30;
 String lineColour = "GREEN";
 // All vars for sound detection + FFT
 #define NUMSAMPLES 512
@@ -369,13 +371,13 @@ void raceState()
     }
     if (offsetValue < 15 && offsetValue >= 5)
     {
-      if (deviationLeftOrRight == 2)
+      if (deviationLeftOrRight == 0)
       {
         // offset left of sensor. must turn right more
         tempLeftMotor = operatingPoint;
         tempRightMotor = operatingPoint - 20;
       }
-      if (deviationLeftOrRight == 0)
+      if (deviationLeftOrRight == 2)
       { // offset right of sensor. must turn left more
         tempLeftMotor = operatingPoint - 20;
         tempRightMotor = operatingPoint;
@@ -384,13 +386,13 @@ void raceState()
     if (offsetValue >= 15)
     { // very far away must turn motor even faster
       {
-        if (deviationLeftOrRight == 2)
+        if (deviationLeftOrRight == 0)
         {
           // offset left of sensor. must turn right more
           tempLeftMotor = operatingPoint;
           tempRightMotor = operatingPoint - 40;
         }
-        if (deviationLeftOrRight == 0)
+        if (deviationLeftOrRight == 2)
         { // offset right of sensor. must turn left more
           tempLeftMotor = operatingPoint - 40;
           tempRightMotor = operatingPoint;
@@ -401,10 +403,14 @@ void raceState()
     //Send motor speed commands to hub
     if (tempLeftMotor != -1 && tempRightMotor != -1) // TODO REMOVE if statement
     {
-      Serial.write(146);            // 0b10010010
-      Serial.write(tempRightMotor); //DATA1 = right motor speed
-      Serial.write(tempLeftMotor);  // DAT0 = left motor speed
-      Serial.write(0);              // DEC = 0
+      if(tempLeftMotor != previousLeftMotor && tempRightMotor != previousRightMotor) { // only one motor output per speed
+        Serial.write(146);            // 0b10010010
+        Serial.write(tempRightMotor); //DATA1 = right motor speed
+        Serial.write(tempLeftMotor);  // DAT0 = left motor speed
+        Serial.write(0);              // DEC = 0
+        previousRightMotor = tempRightMotor ;
+        previousLeftMotor = tempLeftMotor ;
+      }
     }
   }
 
