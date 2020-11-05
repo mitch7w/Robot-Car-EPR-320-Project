@@ -217,7 +217,6 @@ void receiveInput()
       speedValue = DAT1Byte; // DAT1 = right motor speed
     }
   }
-
 }
 
 void clearInput()
@@ -403,17 +402,20 @@ void raceState()
     //Send motor speed commands to hub
     if (tempLeftMotor != -1 && tempRightMotor != -1) // TODO REMOVE if statement
     {
-      if(tempLeftMotor != previousLeftMotor && tempRightMotor != previousRightMotor) { // only one motor output per speed
-        Serial.write(146);            // 0b10010010
-        Serial.write(tempRightMotor); //DATA1 = right motor speed
-        Serial.write(tempLeftMotor);  // DAT0 = left motor speed
-        Serial.write(0);              // DEC = 0
-        previousRightMotor = tempRightMotor ;
-        previousLeftMotor = tempLeftMotor ;
-      }
+      
     }
   }
+  if (tempLeftMotor != previousLeftMotor && tempRightMotor != previousRightMotor)
+  {                               // only one motor output per speed
+    Serial.write(146);            // 0b10010010
+    Serial.write(tempRightMotor); //DATA1 = right motor speed
+    Serial.write(tempLeftMotor);  // DAT0 = left motor speed
+    Serial.write(0);              // DEC = 0
+    previousRightMotor = tempRightMotor;
+    previousLeftMotor = tempLeftMotor;
+  }
 
+  writeToScreenAll();
   soundDetection();
   if(firstSound) {
     Serial.write(145); // 0b10010001
@@ -430,7 +432,6 @@ void raceState()
     firstSound = true ;
     soundDetected = false ;
   }
-  writeToScreenAll();
   clearInput();
 }
 
